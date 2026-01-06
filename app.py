@@ -2,38 +2,51 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import cv2
 import numpy as np
-import pandas as pd
 import requests
-from io import BytesIO
 from collections import Counter
 import os
+import csv
 
 app = Flask(__name__)
 CORS(app)
 
 # Load color dataset (fallback if missing)
+colors_data = []
 try:
-    colors_df = pd.read_csv('colors.csv', names=['color', 'color_name', 'hex', 'R', 'G', 'B'], header=None)
+    with open('colors.csv', 'r') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if len(row) >= 6:
+                colors_data.append({
+                    'R': int(row[3]),
+                    'G': int(row[4]),
+                    'B': int(row[5]),
+                    'color_name': row[1]
+                })
 except FileNotFoundError:
     # Fallback color palette
-    colors_df = pd.DataFrame({
-        'R': [0,255,128,255,0,0,255,128,0,255],
-        'G': [0,255,0,0,255,128,0,0,128,192],
-        'B': [0,255,128,0,0,255,255,128,255,128],
-        'color_name': ['black','white','gray','red','green','blue','yellow','orange','purple','pink']
-    })
+    colors_data = [
+        {'R': 0, 'G': 0, 'B': 0, 'color_name': 'black'},
+        {'R': 255, 'G': 255, 'B': 255, 'color_name': 'white'},
+        {'R': 128, 'G': 128, 'B': 128, 'color_name': 'gray'},
+        {'R': 255, 'G': 0, 'B': 0, 'color_name': 'red'},
+        {'R': 0, 'G': 255, 'B': 0, 'color_name': 'green'},
+        {'R': 0, 'G': 0, 'B': 255, 'color_name': 'blue'},
+        {'R': 255, 'G': 255, 'B': 0, 'color_name': 'yellow'},
+        {'R': 255, 'G': 165, 'B': 0, 'color_name': 'orange'},
+        {'R': 128, 'G': 0, 'B': 128, 'color_name': 'purple'},
+        {'R': 255, 'G': 192, 'B': 203, 'color_name': 'pink'}
+    ]
 
 def get_color_name(R, G, B):
     """Find closest color name from RGB values"""
     minimum = 10000
     cname = "Unknown"
-    for i in range(len(colors_df)):
-        d = (abs(R - int(colors_df.iloc[i]['R'])) + 
-             abs(G - int(colors_df.iloc[i]['G'])) + 
-             abs(B - int(colors_df.iloc[i]['B'])))
+    for color in colors_data:
+        d = abs(R - color['R']) + abs(G - color['G']) + abs(B - color['B'])
         if d <= minimum:
             minimum = d
-            cname = colors_df.iloc[i]['color_name']
+            cname = color['color_name']
     return cname
 
 def extract_dominant_colors(image, num_colors=3):
@@ -53,7 +66,7 @@ def extract_dominant_colors(image, num_colors=3):
     label_counts = Counter(labels)
     sorted_colors = [colors[i] for i, _ in label_counts.most_common()]
     
-    return [(int(c[2]), int(c[1]), int(c[0])) for c in sorted_colors]  # BGR to RGB
+    return [(int(c[2]), int(c[1]), int(c[0])) for c in sorted_colors]
 
 def map_to_clothing_colors(color_names):
     """Map to standard clothing categories"""
@@ -74,7 +87,7 @@ def map_to_clothing_colors(color_names):
         else:
             mapped.append('multicolor')
     
-    return list(dict.fromkeys(mapped))[:3]  # Unique, ordered
+    return list(dict.fromkeys(mapped))[:3]
 
 @app.route('/health', methods=['GET'])
 def health():
